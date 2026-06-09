@@ -34,3 +34,10 @@ Thumbs.db
 
 # Logs
 *.log
+
+# Local data
+backend/uploads/
+backend/faceroom.db
+backend/.env
+frontend/.env
+.vercel
