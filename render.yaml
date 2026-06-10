@@ -27,11 +27,16 @@ services:
       - key: CORS_ORIGINS
         sync: false
 
-  - type: worker
+  # The Celery worker runs as a Docker-based web service on Render's free tier.
+  # Render assigns $PORT but Celery ignores it — this is intentional.
+  - type: web
     name: faceroom-worker
     runtime: docker
     rootDir: backend
     dockerfilePath: Dockerfile.worker
+    # Override CMD so the container acts as a worker, not an HTTP server.
+    # The $PORT env var is set by Render but unused by Celery.
+    startCommand: celery -A app.workers.celery_app.celery_app worker --loglevel=info --concurrency=1
     envVars:
       - key: DATABASE_URL
         fromService:

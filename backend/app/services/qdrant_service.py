@@ -75,10 +75,10 @@ class QdrantService:
             query_filter=models.Filter(
                 must=[models.FieldCondition(key="room_id", match=models.MatchValue(value=room_id))]
             ),
-            limit=top_k + offset,
+            limit=top_k,
+            offset=offset,          # native Qdrant offset — correct pagination
             score_threshold=threshold,
         )
-        hits = results[offset : offset + top_k] if offset else results[:top_k]
         return [
             {
                 "embedding_id": str(hit.id),
@@ -86,7 +86,7 @@ class QdrantService:
                 "face_id": hit.payload.get("face_id"),
                 "similarity": float(hit.score),
             }
-            for hit in hits
+            for hit in results
         ]
 
     def delete_embedding(self, embedding_id: str) -> None:

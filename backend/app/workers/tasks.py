@@ -1,3 +1,5 @@
+import uuid
+
 from app.core.config import get_settings
 from app.core.database import SessionLocal
 from app.core.logging import logger
@@ -65,25 +67,24 @@ def process_image_task(self, image_id: int):
             except Exception as e:
                 logger.warning("Failed to upload face crop: %s", e)
 
-            embedding_id = qdrant.upsert_embedding(
-                embedding=face_data.embedding,
-                room_id=image.room_id,
-                image_id=image_id,
-                face_id=0,
-            )
-
+            # Reserve a placeholder row in Postgres first so we have the real
+            # face.id before upserting into Qdrant — avoids the face_id=0 race.
+            temp_embedding_id = str(uuid.uuid4())
             face = face_repo.create(
                 image_id=image_id,
-                embedding_id=embedding_id,
+                embedding_id=temp_embedding_id,
                 bounding_box=face_data.bounding_box,
                 quality_score=face_data.quality_score,
                 crop_url=crop_url,
             )
 
-            qdrant.client.set_payload(
-                collection_name=settings.QDRANT_COLLECTION,
-                points=[embedding_id],
-                payload={"face_id": face.id},
+            # Now upsert with the real face.id — no race window.
+            embedding_id = qdrant.upsert_embedding(
+                embedding=face_data.embedding,
+                room_id=image.room_id,
+                image_id=image_id,
+                face_id=face.id,
+                embedding_id=temp_embedding_id,   # reuse the same UUID
             )
 
         image_repo.update_status(image_id, ProcessingStatus.COMPLETED)
@@ -134,6 +135,12 @@ def run_room_clustering(self, room_id: int):
         if not embeddings:
             return
 
+        # Clear all existing clusters for this room before re-clustering
+        # to prevent duplicate accumulation on each run.
+        face_repo.bulk_clear_cluster([f.id for f in faces])
+        for old_cluster in cluster_repo.get_room_clusters(room_id):
+            cluster_repo.delete(old_cluster)
+
         labels = cluster_embeddings(embeddings)
         label_to_cluster: dict[int, int] = {}
 
@@ -141,10 +148,9 @@ def run_room_clustering(self, room_id: int):
             if label == -1:
                 cluster = cluster_repo.create(room_id, "Unknown Person")
                 face_repo.update_cluster(face_id, cluster.id)
-                cluster_repo.update(cluster, representative_face_id=face_id)
                 rep_face = face_repo.get_by_id(face_id)
                 if rep_face and rep_face.crop_url:
-                    cluster_repo.update(cluster, representative_face_url=rep_face.crop_url)
+                    cluster_repo.update(cluster, representative_face_id=face_id, representative_face_url=rep_face.crop_url)
                 continue
 
             if label not in label_to_cluster:

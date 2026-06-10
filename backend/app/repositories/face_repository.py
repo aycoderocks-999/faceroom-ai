@@ -62,6 +62,14 @@ class FaceRepository:
         )
         self.db.commit()
 
+    def bulk_clear_cluster(self, face_ids: list[int]) -> None:
+        """Set cluster_id to NULL for all given face IDs (used before re-clustering)."""
+        if face_ids:
+            self.db.query(Face).filter(Face.id.in_(face_ids)).update(
+                {Face.cluster_id: None}, synchronize_session=False
+            )
+            self.db.commit()
+
     def count_by_rooms(self, room_ids: list[int]) -> int:
         if not room_ids:
             return 0

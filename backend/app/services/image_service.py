@@ -1,4 +1,3 @@
-import imghdr
 from fastapi import HTTPException, UploadFile, status
 from sqlalchemy.orm import Session
 
@@ -18,15 +17,24 @@ class ImageService:
         self.room_repo = RoomRepository(db)
         self.storage = storage or StorageService()
 
+    @staticmethod
+    def _detect_image_type(header: bytes) -> str | None:
+        """Return 'jpeg' or 'png' by inspecting magic bytes. No stdlib imghdr needed."""
+        if header[:3] == b"\xff\xd8\xff":
+            return "jpeg"
+        if header[:8] == b"\x89PNG\r\n\x1a\n":
+            return "png"
+        return None
+
     def _validate_file(self, file: UploadFile, content: bytes) -> None:
         if len(content) > settings.MAX_UPLOAD_SIZE_MB * 1024 * 1024:
             raise HTTPException(
                 status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
                 detail=f"File exceeds {settings.MAX_UPLOAD_SIZE_MB}MB limit",
             )
-        img_type = imghdr.what(None, h=content)
+        img_type = self._detect_image_type(content[:8])
         if img_type not in ("jpeg", "png"):
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid image format")
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid image format. Only JPEG and PNG are accepted.")
         if file.content_type and file.content_type not in settings.allowed_mime_types:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid content type")
 
