@@ -16,7 +16,7 @@ $remote = git remote get-url origin 2>$null
 
 if (-not $remote) {
     Write-Host "Creating public repo: $repoName" -ForegroundColor Green
-    gh repo create $repoName --public --source=. --remote=origin --description "FaceRoom AI - Distributed Face Recognition & Event Photo Retrieval"
+    gh repo create $repoName --public --source=. --remote=origin --description "FaceRoom AI - Face Recognition and Event Photo Platform"
     git branch -M main
     git push -u origin main
 } else {
